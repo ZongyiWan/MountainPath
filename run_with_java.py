@@ -6,22 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import time
 from visualization import color_path_on_map, display_map, calculate_total_elevation_change
-
-
-def read_dat(file_path):
-    with open(file_path, 'r') as f:
-        data = []
-        for line in f:
-            row = list(map(int, line.strip().split()))
-            data.append(row)
-    return np.array(data)
-
-
-def normalize_elevation_data(elevation_data):
-    min_elev = np.min(elevation_data)
-    max_elev = np.max(elevation_data)
-    normalized_data = 255 * (elevation_data - min_elev) / (max_elev - min_elev)
-    return normalized_data.astype(np.uint8)
+from utils import normalize_data, read_dat
 
 
 def compute_with_java(elevation_maps, starts, goals, debug=True):
@@ -105,9 +90,8 @@ def main():
     last_col = np.full((elevation_data.shape[0], 1), int(np.mean(elevation_data[:, -1])))
     elevation_data = np.hstack((elevation_data, last_col))
 
-    normalized_elevation_data = normalize_elevation_data(elevation_data)
-
-    steps = 40
+    normalized_elevation_data = normalize_data(elevation_data)
+    steps = 10
     step = math.floor((normalized_elevation_data.shape[0] - 1) / steps)
     # goal = (0, 0)
     # start = (normalized_elevation_data.shape[0] - 1, normalized_elevation_data.shape[1] - 1)
