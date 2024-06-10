@@ -11,6 +11,7 @@ import java.util.function.ToIntBiFunction;
 
 public class BAS_Server {
     static final boolean DEBUG = false;
+    static final boolean ANIMATE = true;
     private static void debugPrint(String message) {
         if (DEBUG) {
             System.out.println(message);
@@ -42,7 +43,7 @@ public class BAS_Server {
                     int goalX = Integer.parseInt(inputArray[4]);
                     int goalY = Integer.parseInt(inputArray[5]);
 
-                    debugPrint("Dimensions: " + rows + "by " + cols + "\n"
+                    debugPrint("Dimensions: " + rows + " by " + cols + "\n"
                                         + "start: " + new Node(startX, startY) + "\n"
                                         + "goal: " + new Node(goalX, goalY));
 
@@ -72,16 +73,16 @@ public class BAS_Server {
 
                     // Run parallel A* algorithm
                     debugPrint("Calculating path...");
-                    ParallelAStar pathFinder = new ParallelAStar(knownDistance, estimatedDistance, connectedNodes);
+                    ParallelAStar pathFinder = new ParallelAStar(knownDistance, estimatedDistance, connectedNodes, out);
                     ImmutableList<Node> path = pathFinder.search(new Node(startX, startY), new Node(goalX, goalY));
-                    debugPrint("Calculation finished");
-                    // Send results back to Python
-                    if (path != null && !path.isEmpty()) {
-                        for (Node point : path) {
-                            out.println(point.x + "," + point.y);
+                    if (!ANIMATE) {
+                        if (path != null && !path.isEmpty()) {
+                            for (Node point : path) {
+                                out.println(point.x + "," + point.y);
+                            }
+                        } else {
+                            out.println("No path found\n");
                         }
-                    } else {
-                        out.println("No path found\n");
                     }
                     out.println("END\n");
                     out.flush();

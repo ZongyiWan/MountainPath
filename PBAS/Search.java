@@ -1,17 +1,15 @@
 package PBAS;
 
-import java.util.Map;
-import java.util.PriorityQueue;
-import java.util.Set;
+import java.io.PrintWriter;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicStampedReference;
 import java.util.function.Function;
 import java.util.function.ToIntBiFunction;
 
 import static java.lang.Math.addExact;
-import static java.util.Comparator.comparingInt;
 
-final class Search implements Runnable {
+public class Search implements Runnable {
     private final Node start;
     private final Node end;
     private final AtomicBoolean finished;
@@ -23,28 +21,34 @@ final class Search implements Runnable {
     private final Function<Node, Iterable<Node>> connectedNodes;
     private final ToIntBiFunction<Node, Node> knownDistanceBetweenAdjacentNodes;
     private final ToIntBiFunction<Node, Node> estimatedDistance;
+    private final PrintWriter out;
+    private final boolean forward;
 
-    Search(Node start,
-           Node end,
-           AtomicBoolean finished,
-           Set<Node> visited,
-           AtomicStampedReference<Node> bestCompletePath,
-           Map<Node, Path> paths1,
-           Map<Node, Path> paths2,
-           Function<Node, Iterable<Node>> connectedNodes,
-           ToIntBiFunction<Node, Node> knownDistanceBetweenAdjacentNodes,
-           ToIntBiFunction<Node, Node> estimatedDistance) {
+    public Search(Node start,
+                  Node end,
+                  AtomicBoolean finished,
+                  Set<Node> visited,
+                  AtomicStampedReference<Node> bestCompletePath,
+                  Map<Node, Path> paths1,
+                  Map<Node, Path> paths2,
+                  Function<Node, Iterable<Node>> connectedNodes,
+                  ToIntBiFunction<Node, Node> knownDistanceBetweenAdjacentNodes,
+                  ToIntBiFunction<Node, Node> estimatedDistance,
+                  PrintWriter out,
+                  boolean forward) {
         this.start = start;
         this.end = end;
         this.finished = finished;
         this.visited = visited;
         this.bestCompletePath = bestCompletePath;
-        this.nodesToVisit = new PriorityQueue<>(comparingInt(x -> paths1.get(x).distanceTravelled));
+        this.nodesToVisit = new PriorityQueue<>(Comparator.comparingInt(x -> paths1.get(x).distanceTravelled));
         this.paths1 = paths1;
         this.paths2 = paths2;
         this.connectedNodes = connectedNodes;
         this.knownDistanceBetweenAdjacentNodes = knownDistanceBetweenAdjacentNodes;
         this.estimatedDistance = estimatedDistance;
+        this.out = out;
+        this.forward = forward;
     }
 
     @Override
@@ -58,13 +62,14 @@ final class Search implements Runnable {
                 finished.set(true);
             } else {
                 x = nodesToVisit.poll();
-                debugPrint("Polled node: " + x);
+                sendUpdateToPython("Expanding node", x);
             }
         }
+        sendUpdateToPython("Path complete", new Node(0, 0));
     }
 
     private void visit(Node x) {
-        debugPrint("Visiting node: " + x);
+        sendUpdateToPython("Visiting node", x);
         var xPath = paths1.get(x);
         if (shouldExpand(xPath)) {
             for (var y : connectedNodes(x)) {
@@ -81,11 +86,14 @@ final class Search implements Runnable {
                         nodesToVisit.remove(y);
                         nodesToVisit.add(y);
                         updateBestCompletePath(betterPathToY);
+                        if(forward) sendUpdateToPython("Best path forward", betterPathToY);
+                        else sendUpdateToPython("Best path backward", betterPathToY);
                     }
                 }
             }
         }
         visited.add(x);
+        sendUpdateToPython("Expanded node", x);
     }
 
     private boolean shouldExpand(Path xPath) {
@@ -108,15 +116,28 @@ final class Search implements Runnable {
                 return;
             }
             success = bestCompletePath.compareAndSet(oldCommonNode, newCommonNode, oldDistance, newDistance);
-            debugPrint("Updated best complete path: " + bestCompletePath.getReference() + " with distance: " + newDistance);
+            sendUpdateToPython("Updated best complete path", bestCompletePath.getReference());
         }
     }
 
-    private void debugPrint(String message) {
-        if (BAS_Server.DEBUG) {
-            System.out.println(message);
+    private void sendUpdateToPython(String action, Node node) {
+        if(BAS_Server.ANIMATE){
+            out.println(action + ": " + node.x + "," + node.y);
         }
     }
+
+    private void sendUpdateToPython(String action, Path path) {
+        if(BAS_Server.ANIMATE){
+            List<String> pathNodes = new ArrayList<>();
+            while (path != null) {
+                pathNodes.add(path.value.x + "," + path.value.y);
+                path = path.previous;
+            }
+            Collections.reverse(pathNodes);
+            out.println(action + ": " + String.join(" -> ", pathNodes));
+        }
+    }
+
 
     private Iterable<Node> connectedNodes(Node x) {
         return connectedNodes.apply(x);

@@ -2,6 +2,7 @@ package PBAS;
 
 import com.google.common.collect.ImmutableList;
 
+import java.io.PrintWriter;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -20,24 +21,28 @@ final class ParallelAStar {
     private final ToIntBiFunction<Node, Node> estimatedDistance;
     private final Function<Node, Iterable<Node>> connectedNodes;
     private final Function<Runnable, Future<?>> executor;
+    private final PrintWriter out;
 
     public ParallelAStar(
             ToIntBiFunction<Node, Node> knownDistance,
             ToIntBiFunction<Node, Node> estimatedDistance,
-            Function<Node, Iterable<Node>> connectedNodes) {
+            Function<Node, Iterable<Node>> connectedNodes,
+            PrintWriter out) {
         this(knownDistance, estimatedDistance, connectedNodes,
-                a -> ForkJoinPool.commonPool().submit(a));
+                a -> ForkJoinPool.commonPool().submit(a), out);
     }
 
     public ParallelAStar(
             ToIntBiFunction<Node, Node> knownDistance,
             ToIntBiFunction<Node, Node> estimatedDistance,
             Function<Node, Iterable<Node>> connectedNodes,
-            Function<Runnable, Future<?>> executor) {
+            Function<Runnable, Future<?>> executor,
+            PrintWriter out) {
         this.knownDistance = checkNotNull(knownDistance);
         this.estimatedDistance = checkNotNull(estimatedDistance);
         this.connectedNodes = checkNotNull(connectedNodes);
         this.executor = checkNotNull(executor);
+        this.out = out;
     }
 
     public ImmutableList<Node> search(Node start, Node end) {
@@ -61,7 +66,7 @@ final class ParallelAStar {
         Future<?> future = executor.apply(
                 () -> {
                     new Search(start, end, finished, visited, bestCompletePath, paths1, paths2,
-                            connectedNodes, knownDistance, estimatedDistance)
+                            connectedNodes, knownDistance, estimatedDistance, out, true)
                             .run();
                     var commonNode = bestCompletePath.getReference();
                     if (commonNode != null) {
@@ -75,7 +80,7 @@ final class ParallelAStar {
 
         var result2 = new ArrayList<Node>();
         new Search(end, start, finished, visited, bestCompletePath, paths2, paths1,
-                connectedNodes, knownDistance, estimatedDistance)
+                connectedNodes, knownDistance, estimatedDistance, out, false)
                 .run();
         var commonNode = bestCompletePath.getReference();
         if (commonNode == null) {
@@ -88,6 +93,7 @@ final class ParallelAStar {
             debugPrint("Partial Path1: " + paths1.size() + "," + result1.size());
             debugPrint("Partial Path2: " + paths2.size() + "," + result2.size());
 
+            out.println("No path found");
             return ImmutableList.<Node>builder()
                     .addAll(result1)
                     .addAll(result2)
@@ -108,10 +114,13 @@ final class ParallelAStar {
         }
 
         debugPrint("Final path collected");
-        return ImmutableList.<Node>builder()
+        ImmutableList<Node> fullPath = ImmutableList.<Node>builder()
                 .addAll(result1)
                 .addAll(result2)
                 .build();
+
+        sendPath(out, fullPath, commonNode);
+        return fullPath;
     }
 
     private void collectPartialPaths(Map<Node, Path> paths, ArrayList<Node> result) {
@@ -128,6 +137,17 @@ final class ParallelAStar {
     private void debugPrint(String message) {
         if (BAS_Server.DEBUG) {
             System.out.println(message);
+        }
+    }
+
+    private void sendPath(PrintWriter out, ImmutableList<Node> fullPath, Node meetingPoint) {
+        if (BAS_Server.ANIMATE) {
+            List<String> pathNodes = new ArrayList<>();
+            for (Node node : fullPath) {
+                pathNodes.add(node.getX() + "," + node.getY());
+            }
+            out.println("Full path: " + String.join(" -> ", pathNodes));
+            out.println("Meeting point: " + meetingPoint.getX() + "," + meetingPoint.getY());
         }
     }
 
